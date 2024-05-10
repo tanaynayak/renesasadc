@@ -12,10 +12,11 @@ import seaborn as sns
 import numpy as np
 from joblib import dump
 
+output_dir = 'output'
+os.makedirs(output_dir, exist_ok=True)
 
 meta_data = pd.read_csv('data/meta.csv')
-
-def plot_audio_files(row):
+def save_plot_audio_files(row):
     filepath = os.path.join('data', row['label'], row['file'])
     data, sr = librosa.load(filepath, sr=None)  # Load with original sample rate
 
@@ -32,7 +33,18 @@ def plot_audio_files(row):
     librosa.display.specshow(Xdb, sr=sr, x_axis='time', y_axis='hz')
     plt.title('Spectrogram of {}'.format(row['file']))
     plt.colorbar()
-    plt.show()
+
+    plt.savefig(os.path.join(output_dir, f"{row['file'].split('.')[0]}_plots.png"))  # Save plot
+    plt.close()
+
+def save_confusion_matrix(cm, labels, title, filename):
+    plt.figure(figsize=(10, 7))
+    sns.heatmap(cm, annot=True, fmt="d", xticklabels=labels, yticklabels=labels)
+    plt.title(title)
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+    plt.savefig(os.path.join(output_dir, filename))
+    plt.close()
 
 def load_and_preprocess(file_path, duration=4, sr=22050):
     data, sr = librosa.load(file_path, sr=sr, duration=duration)
@@ -72,24 +84,8 @@ def extract_features(file_path, sr=22050, n_fft=2048, hop_length=512, n_mfcc=13,
 
     return features
 
-# for label in meta_data['label'].unique():
-#     example_row = meta_data[meta_data['label'] == label].iloc[0]
-#     plot_audio_files(example_row)
 
-
-
-
-
-
-# sample_data, sample_rate = load_and_preprocess(train.iloc[0]['path'])
-# print("Processed data shape:", sample_data.shape)
-# print("Sample rate:", sample_rate)
-
-
-
-
-
-if __name__ == "__main__":
+def run_job():
     meta_data['path'] = meta_data.apply(lambda row: os.path.join('data', row['label'], row['file']), axis=1)
 
     train, test = train_test_split(meta_data, test_size=0.2, random_state=42, stratify=meta_data['label'])
@@ -125,29 +121,22 @@ if __name__ == "__main__":
     y_pred_svm = svm_model.predict(X_val)
     y_pred_rf = rf_model.predict(X_val)
 
-    print("SVM Classification Report:")
-    print(classification_report(y_val, y_pred_svm, target_names=label_encoder.classes_))
-
-    print("Random Forest Classification Report:")
-    print(classification_report(y_val, y_pred_rf, target_names=label_encoder.classes_))
-
     # Confusion Matrices
     cm_svm = confusion_matrix(y_val, y_pred_svm)
     cm_rf = confusion_matrix(y_val, y_pred_rf)
 
-    plt.figure(figsize=(12, 6))
-    plt.subplot(1, 2, 1)
-    sns.heatmap(cm_svm, annot=True, fmt="d", xticklabels=label_encoder.classes_, yticklabels=label_encoder.classes_)
-    plt.title("SVM Confusion Matrix")
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
+    # Saving classification reports
+    with open(os.path.join(output_dir, 'svm_val_classification_report_val.txt'), 'w') as file:
+        report = classification_report(y_val, y_pred_svm, target_names=label_encoder.classes_)
+        file.write(report)
 
-    plt.subplot(1, 2, 2)
-    sns.heatmap(cm_rf, annot=True, fmt="d", xticklabels=label_encoder.classes_, yticklabels=label_encoder.classes_)
-    plt.title("Random Forest Confusion Matrix")
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
-    plt.show()
+    with open(os.path.join(output_dir, 'rf_val_classification_report_val.txt'), 'w') as file:
+        report = classification_report(y_val, y_pred_rf, target_names=label_encoder.classes_)
+        file.write(report)
+    
+    # Saving confusion matrices
+    save_confusion_matrix(cm_svm, label_encoder.classes_, "SVM Validation Confusion Matrix", 'svm_val_cm.png')
+    save_confusion_matrix(cm_rf, label_encoder.classes_, "Random Forest Validation Confusion Matrix", 'rf_val_cm.png')
 
 
     
@@ -163,26 +152,17 @@ if __name__ == "__main__":
     y_pred_svm = svm_model.predict(X_test)
     y_pred_rf = rf_model.predict(X_test)
 
-    print("SVM Test Classification Report:")
-    print(classification_report(y_test_encoded, y_pred_svm, target_names=label_encoder.classes_))
-
-    print("Random Forest Test Classification Report:")
-    print(classification_report(y_test_encoded, y_pred_rf, target_names=label_encoder.classes_))
-
+    
     cm_svm = confusion_matrix(y_test_encoded, y_pred_svm)
     cm_rf = confusion_matrix(y_test_encoded, y_pred_rf)
+    
+    with open(os.path.join(output_dir, 'svm_test_classification_report.txt'), 'w') as file:
+        report = classification_report(y_test_encoded, y_pred_svm, target_names=label_encoder.classes_)
+        file.write(report)
 
-    plt.figure(figsize=(12, 6))
-    plt.subplot(1, 2, 1)
-    sns.heatmap(cm_svm, annot=True, fmt="d", xticklabels=label_encoder.classes_, yticklabels=label_encoder.classes_)
-    plt.title("SVM Test Confusion Matrix")
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
-
-    plt.subplot(1, 2, 2)
-    sns.heatmap(cm_rf, annot=True, fmt="d", xticklabels=label_encoder.classes_, yticklabels=label_encoder.classes_)
-    plt.title("Random Forest Test Confusion Matrix")
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
-    plt.show()
-
+    with open(os.path.join(output_dir, 'rf_test_classification_report.txt'), 'w') as file:
+        report = classification_report(y_test_encoded, y_pred_rf, target_names=label_encoder.classes_)
+        file.write(report)
+    
+    save_confusion_matrix(cm_svm, label_encoder.classes_, "SVM Test Confusion Matrix", 'svm_test_cm.png')
+    save_confusion_matrix(cm_rf, label_encoder.classes_, "Random Forest Test Confusion Matrix", 'rf_test_cm.png')
